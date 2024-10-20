@@ -12,7 +12,7 @@ python -m venv venv
 source venv/bin/active
 ```
 
-2. Install dependencies using pip
+3. Install dependencies using pip
 ```
 pip install -r requirements.txt
 ```
