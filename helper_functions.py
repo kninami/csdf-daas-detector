@@ -6,27 +6,27 @@ import os
 import sqlite3
 
 def format_content(content):
-        if isinstance(content, list):
-            # 리스트인 경우 각 항목을 개별적으로 처리
-            formatted_items = []
-            for item in content:
-                if isinstance(item, (dict, list)):
-                    formatted_items.append(json.dumps(item, indent=2))
-                else:
-                    formatted_items.append(str(item))
-            return "\n".join(formatted_items)
-        elif isinstance(content, dict):
-            return json.dumps(content, indent=2)
-        elif isinstance(content, str):
-            try:
-                json_object = json.loads(content)
-                return json.dumps(json_object, indent=2)
-            except json.JSONDecodeError:
-                # JSON 파싱 실패 시 원본 문자열 사용
-                return content
-        else:
-            # 그 외의 경우 문자열로 변환
-            return str(content)
+    if isinstance(content, list):
+        # 리스트인 경우 각 항목을 개별적으로 처리
+        formatted_items = []
+        for item in content:
+            if isinstance(item, (dict, list)):
+                formatted_items.append(json.dumps(item, indent=2))
+            else:
+                formatted_items.append(str(item))
+        return "\n".join(formatted_items)
+    elif isinstance(content, dict):
+        return json.dumps(content, indent=2)
+    elif isinstance(content, str):
+        try:
+            json_object = json.loads(content)
+            return json.dumps(json_object, indent=2)
+        except json.JSONDecodeError:
+            # JSON 파싱 실패 시 원본 문자열 사용
+            return content
+    else:
+        # 그 외의 경우 문자열로 변환
+        return str(content)
     
 def create_json_entry(file_type, file_name, file_path, content, created_time, modified_time):
     return {
@@ -110,8 +110,6 @@ def get_encryption_key():
 
 def read_cookie_content(file_path, max_size=1024 * 1024):
     encryption_key = get_encryption_key()
-    print("Encryption key:", encryption_key.hex())
-
     try:
         with open(file_path, 'rb') as file:
             content = file.read(max_size)
@@ -119,7 +117,6 @@ def read_cookie_content(file_path, max_size=1024 * 1024):
         return decrypted_content
     except Exception as e:
         return f"Error reading/decrypting file: {str(e)}"
-
 
 def read_log_content(file_path, max_size=1024 * 1024):  # 기본적으로 1MB로 제한
     try:

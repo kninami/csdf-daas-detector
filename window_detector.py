@@ -17,7 +17,6 @@ def get_cookies(input_data):
                     file_path = os.path.join(full_cookie_path, file)
                     encryption_key = helper_functions.get_encryption_key() 
                     content = helper_functions.parse_cookie_file(full_cookie_path, encryption_key)
-                    print(content)
                     cookies.append({
                         "file_type": "Cookie",
                         "file_name": file,
