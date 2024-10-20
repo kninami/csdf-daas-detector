@@ -1,6 +1,17 @@
 import winreg
 import os
 import json
+import datetime
+
+def create_json_entry(file_type, file_name, file_path, content, created_time, modified_time):
+    return {
+        "file_type": file_type,
+        "file_name": file_name,
+        "file_path": file_path,
+        "content": content,
+        "created_time": created_time,
+        "modified_time": modified_time
+    }
 
 def read_registry_value(input_data):
     reg_path = input_data["registryPath"]
@@ -15,9 +26,7 @@ def read_registry_value(input_data):
         
         winreg.CloseKey(reg_key)
         return results, None
-    except FileNotFoundError:
-        return None, f"{str(reg_path)} not found"
-    except OSError as e:
+    except Exception as e:
         return None, e
 
 def read_local_appdata(input_data):
@@ -33,6 +42,7 @@ def read_local_appdata(input_data):
     
     try:
         result = {
+            "path": target_folder,
             "folder_tree": explore_folder_tree(target_folder),
             "settings_data": get_settings_files(target_folder, input_data["settingsFiles"])
         }
@@ -52,6 +62,17 @@ def extract_keys(data, keys_to_extract):
     else:
         return None
 
+def get_file_dates(file_path):
+    stat = os.stat(file_path)
+    
+    created = stat.st_ctime if hasattr(stat, 'st_birthtime') else stat.st_mtime
+    modified = stat.st_mtime
+
+    created_date = datetime.datetime.fromtimestamp(created).strftime('%Y-%m-%d %H:%M:%S')
+    modified_date = datetime.datetime.fromtimestamp(modified).strftime('%Y-%m-%d %H:%M:%S')
+
+    return created_date, modified_date
+
 def get_settings_files(target_folder, settings_files):
     results = []
     for file_info in settings_files:
@@ -61,12 +82,16 @@ def get_settings_files(target_folder, settings_files):
             "extract_flag": False,
             "content": "",
             "error_flag": False,
-            "error_msg": ""
+            "error_msg": "",
+            "created_date": "",
+            "modified_date": ""
         }
         
         file_path = os.path.join(target_folder, result["file_name"])
         if os.path.exists(file_path):
             try:
+                # 파일 날짜 정보 가져오기
+                result["created_date"], result["modified_date"] = get_file_dates(file_path)
                 with open(file_path, 'r') as file:
                     file_content = json.load(file)
                     extracted_data = extract_keys(file_content, file_info["keys"])                    
@@ -100,7 +125,7 @@ def explore_folder_tree(folder_path, indent=""):
     
     return "\n".join(result)
 
-if __name__ == "__main__":
+def main():
     input_data = {
         "serviceName": "Amazon WorkSpaces",
         "targetDirectory": "Amazon WorkSpaces",
@@ -120,13 +145,102 @@ if __name__ == "__main__":
 
     registry, reg_error = read_registry_value(input_data)
     appdata, appdata_error = read_local_appdata(input_data) 
-    if registry:
-        print(registry)
-        
-    if appdata:
-        folder_tree = appdata["folder_tree"]
-        settings_data = appdata["settings_data"]
-        print(folder_tree)
-        print(settings_data)
+    results = []
+    
+    if reg_error:
+        print(f"Registry error: {reg_error}")
     else:
-        print(appdata_error)
+        results.append(create_json_entry(
+            "Registry",
+            input_data["registryPath"],
+            fr"HKEY_CURRENT_USER\{input_data['registryPath']}",
+            registry,
+            "",
+            ""
+        ))
+
+    if appdata_error:
+        print(f"AppData error: {appdata_error}")
+    elif appdata:
+        results.append(create_json_entry(
+            "AppData",
+            "File Tree",
+            appdata["path"],
+            appdata["folder_tree"],
+            "",
+            ""
+        ))
+
+        results.extend([
+            create_json_entry(
+                "AppData",
+                setting_data["file_name"],
+                setting_data["file_path"],
+                setting_data["content"],
+                setting_data["created_date"],
+                setting_data["modified_date"]
+            ) for setting_data in appdata["settings_data"]
+        ])
+
+    return results
+
+if __name__ == "__main__":
+    main()
+    input_data = {
+        "serviceName": "Amazon WorkSpaces",
+        "targetDirectory": "Amazon WorkSpaces",
+        "parentDirectory": "Amazon Web Services",
+        "registryPath": "Software\\Amazon Web Services, LLC\\Amazon WorkSpaces",
+        "settingsFiles": [
+            {
+                "fileName": "UserSettings.json",
+                "keys": ["CurrentRegistration"]
+            },
+            {
+                "fileName": "RegistrationList.json",
+                "keys": ["RegistrationCode", "RegionKey", "OrgName"]
+            }
+        ]
+    }
+
+    registry, reg_error = read_registry_value(input_data)
+    appdata, appdata_error = read_local_appdata(input_data) 
+    results = []
+    
+    if reg_error:
+        print(f"Registry error: {reg_error}")
+    else:
+        results.append(create_json_entry(
+            "Registry",
+            input_data["registryPath"],
+            fr"HKEY_CURRENT_USER\{input_data['registryPath']}",
+            registry,
+            "",
+            ""
+        ))
+
+    if appdata_error:
+        print(f"AppData error: {appdata_error}")
+    elif appdata:
+        results.append(create_json_entry(
+            "AppData",
+            "File Tree",
+            appdata["path"],
+            appdata["folder_tree"],
+            "",
+            ""
+        ))
+
+        results.extend([
+            create_json_entry(
+                "AppData",
+                setting_data["file_name"],
+                setting_data["file_path"],
+                setting_data["content"],
+                setting_data["created_date"],
+                setting_data["modified_date"]
+            ) for setting_data in appdata["settings_data"]
+        ])
+
+    for result in results:
+        print(result)
