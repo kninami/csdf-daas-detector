@@ -1,19 +1,52 @@
 import winreg
 import os
 import json
-import datetime
+from datetime import datetime
+import glob
+import helper_functions
 
-def create_json_entry(file_type, file_name, file_path, content, created_time, modified_time):
-    return {
-        "file_type": file_type,
-        "file_name": file_name,
-        "file_path": file_path,
-        "content": content,
-        "created_time": created_time,
-        "modified_time": modified_time
-    }
+def get_cookies(input_data):
+    target_folder, error = helper_functions.is_directory_exist(input_data)
+    cookie_path_components = input_data["cookiePath"]
+    cookies = []
+    if not error:
+        full_cookie_path = os.path.join(target_folder, *cookie_path_components)
+        if os.path.exists(full_cookie_path):
+            for file in os.listdir(full_cookie_path):
+                if file == "Cookies":
+                    file_path = os.path.join(full_cookie_path, file)
+                    encryption_key = helper_functions.get_encryption_key() 
+                    content = helper_functions.parse_cookie_file(full_cookie_path, encryption_key)
+                    print(content)
+                    cookies.append({
+                        "file_type": "Cookie",
+                        "file_name": file,
+                        "file_path": file_path,
+                        "content": content,
+                        "created_date": get_file_date(file_path, 'created'),
+                        "modified_date": get_file_date(file_path, 'modified')
+                    })
+    return cookies
 
-def read_registry_value(input_data):
+def get_logs(input_data):
+    target_folder, error = helper_functions.is_directory_exist(input_data)
+    logs = []
+    if not error:        
+        log_path = os.path.join(target_folder, 'logs')
+        if os.path.exists(log_path):
+            for file in glob.glob(os.path.join(log_path, '*.log')):
+                content = helper_functions.read_log_content(file)
+                logs.append({
+                    "file_type": "Log",
+                    "file_name": os.path.basename(file),
+                    "file_path": file,
+                    "content": content,
+                    "created_date": get_file_date(file, 'created'),
+                    "modified_date": get_file_date(file, 'modified')
+                })
+    return logs
+
+def get_local_registry(input_data):
     reg_path = input_data["registryPath"]
     try:
         reg_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path)
@@ -29,9 +62,9 @@ def read_registry_value(input_data):
     except Exception as e:
         return None, e
 
-def read_local_appdata(input_data):
-    local_app_data = os.environ['LOCALAPPDATA']
-    parent_folder = os.path.join(local_app_data, input_data["parentDirectory"])
+def get_local_appdata(input_data):
+    appdata_path = os.environ['LOCALAPPDATA']
+    parent_folder = os.path.join(appdata_path, input_data["parentDirectory"])
     
     if not os.path.exists(parent_folder):
         return None, f"{str(parent_folder)} folder not found"
@@ -50,28 +83,13 @@ def read_local_appdata(input_data):
     except Exception as e:
         return None, f"Error processing data: {str(e)}"
 
-def extract_keys(data, keys_to_extract):
-    if isinstance(data, list):
-        return [
-            {key: item[key] for key in keys_to_extract if key in item}
-            for item in data
-            if any(key in item for key in keys_to_extract)
-        ]
-    elif isinstance(data, dict):
-        return {key: data[key] for key in keys_to_extract if key in data}
-    else:
-        return None
-
-def get_file_dates(file_path):
-    stat = os.stat(file_path)
-    
-    created = stat.st_ctime if hasattr(stat, 'st_birthtime') else stat.st_mtime
-    modified = stat.st_mtime
-
-    created_date = datetime.datetime.fromtimestamp(created).strftime('%Y-%m-%d %H:%M:%S')
-    modified_date = datetime.datetime.fromtimestamp(modified).strftime('%Y-%m-%d %H:%M:%S')
-
-    return created_date, modified_date
+def get_file_date(file_path, date_type):
+    if os.path.exists(file_path):
+        if date_type == 'created':
+            return datetime.fromtimestamp(os.path.getctime(file_path)).strftime('%Y-%m-%d %H:%M:%S')
+        elif date_type == 'modified':
+            return datetime.fromtimestamp(os.path.getmtime(file_path)).strftime('%Y-%m-%d %H:%M:%S')
+    return ""
 
 def get_settings_files(target_folder, settings_files):
     results = []
@@ -90,11 +108,12 @@ def get_settings_files(target_folder, settings_files):
         file_path = os.path.join(target_folder, result["file_name"])
         if os.path.exists(file_path):
             try:
-                # 파일 날짜 정보 가져오기
-                result["created_date"], result["modified_date"] = get_file_dates(file_path)
+                result["created_date"] = get_file_date(file_path, 'created')
+                result["modified_date"] = get_file_date(file_path, 'modified')
+                
                 with open(file_path, 'r') as file:
                     file_content = json.load(file)
-                    extracted_data = extract_keys(file_content, file_info["keys"])                    
+                    extracted_data = helper_functions.extract_keys(file_content, file_info["keys"])                    
                     if extracted_data:
                         result["extract_flag"] = True
                         result["content"] = json.dumps(extracted_data, indent=2)
@@ -140,17 +159,21 @@ def main():
                 "fileName": "RegistrationList.json",
                 "keys": ["RegistrationCode", "RegionKey", "OrgName"]
             }
-        ]
+        ],
+        "cookiePath": ['webview2', 'EBWebView', 'Default', 'Network']
     }
 
-    registry, reg_error = read_registry_value(input_data)
-    appdata, appdata_error = read_local_appdata(input_data) 
-    results = []
+    registry, reg_error = get_local_registry(input_data)
+    appdata, appdata_error = get_local_appdata(input_data) 
+
+    results = []    
+    results.extend(get_logs(input_data))
+    results.extend(get_cookies(input_data))
     
     if reg_error:
         print(f"Registry error: {reg_error}")
     else:
-        results.append(create_json_entry(
+        results.append(helper_functions.create_json_entry(
             "Registry",
             input_data["registryPath"],
             fr"HKEY_CURRENT_USER\{input_data['registryPath']}",
@@ -162,7 +185,7 @@ def main():
     if appdata_error:
         print(f"AppData error: {appdata_error}")
     elif appdata:
-        results.append(create_json_entry(
+        results.append(helper_functions.create_json_entry(
             "AppData",
             "File Tree",
             appdata["path"],
@@ -172,7 +195,7 @@ def main():
         ))
 
         results.extend([
-            create_json_entry(
+            helper_functions.create_json_entry(
                 "AppData",
                 setting_data["file_name"],
                 setting_data["file_path"],
@@ -186,61 +209,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    input_data = {
-        "serviceName": "Amazon WorkSpaces",
-        "targetDirectory": "Amazon WorkSpaces",
-        "parentDirectory": "Amazon Web Services",
-        "registryPath": "Software\\Amazon Web Services, LLC\\Amazon WorkSpaces",
-        "settingsFiles": [
-            {
-                "fileName": "UserSettings.json",
-                "keys": ["CurrentRegistration"]
-            },
-            {
-                "fileName": "RegistrationList.json",
-                "keys": ["RegistrationCode", "RegionKey", "OrgName"]
-            }
-        ]
-    }
-
-    registry, reg_error = read_registry_value(input_data)
-    appdata, appdata_error = read_local_appdata(input_data) 
-    results = []
-    
-    if reg_error:
-        print(f"Registry error: {reg_error}")
-    else:
-        results.append(create_json_entry(
-            "Registry",
-            input_data["registryPath"],
-            fr"HKEY_CURRENT_USER\{input_data['registryPath']}",
-            registry,
-            "",
-            ""
-        ))
-
-    if appdata_error:
-        print(f"AppData error: {appdata_error}")
-    elif appdata:
-        results.append(create_json_entry(
-            "AppData",
-            "File Tree",
-            appdata["path"],
-            appdata["folder_tree"],
-            "",
-            ""
-        ))
-
-        results.extend([
-            create_json_entry(
-                "AppData",
-                setting_data["file_name"],
-                setting_data["file_path"],
-                setting_data["content"],
-                setting_data["created_date"],
-                setting_data["modified_date"]
-            ) for setting_data in appdata["settings_data"]
-        ])
-
-    for result in results:
-        print(result)

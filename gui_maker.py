@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QTableWidget, QTableWidg
 from PyQt5.QtCore import Qt
 import window_detector
 import json
+import helper_functions
 
 class JsonViewerDialog(QDialog):
     def __init__(self, content):
@@ -17,12 +18,7 @@ class JsonViewerDialog(QDialog):
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
         
-        try:
-            json_object = json.loads(content)
-            formatted_content = json.dumps(json_object, indent=2)
-        except json.JSONDecodeError:
-            # JSON 파싱 실패 시 원본 문자열 사용
-            formatted_content = content
+        formatted_content = helper_functions.format_content(content)
 
         self.text_edit.setPlainText(formatted_content)
         layout.addWidget(self.text_edit)
@@ -33,11 +29,11 @@ class JsonViewerDialog(QDialog):
 
         self.setLayout(layout)
 
-class SettingsViewer(QMainWindow):
+class DetectorViewer(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Settings Viewer")
-        self.setGeometry(100, 100, 800, 600)
+        self.setWindowTitle("DaaS Artifacts Detector")
+        self.setGeometry(100, 100, 1200, 600)
         
         layout = QVBoxLayout()
         
@@ -89,6 +85,6 @@ class SettingsViewer(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    viewer = SettingsViewer()
+    viewer = DetectorViewer()
     viewer.show()
     sys.exit(app.exec_())
